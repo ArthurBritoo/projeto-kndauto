@@ -19,7 +19,8 @@ from typing import Optional
 import yt_dlp
 
 
-def download_youtube(url: str, out_dir: str | Path, skip_if_exists: bool = True, max_height: Optional[int] = None) -> Path:
+def download_youtube(url: str, out_dir: str | Path, skip_if_exists: bool = True, max_height: Optional[int] = None,
+                     download_archive: Optional[str] = None) -> Path:
     """Download best video+audio merged format via yt-dlp.
 
     If skip_if_exists is True the function will attempt to detect an existing
@@ -47,6 +48,13 @@ def download_youtube(url: str, out_dir: str | Path, skip_if_exists: bool = True,
         # do not overwrite by default; we'll control via skip_if_exists
         'nooverwrites': False,
     }
+    if download_archive:
+        # ensure archive directory exists
+        try:
+            Path(download_archive).parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        ydl_opts['download_archive'] = str(download_archive)
 
     # Try to inspect info to get video id and expected filename without forcing a download
     with yt_dlp.YoutubeDL({'noplaylist': True, 'quiet': True}) as ydl:

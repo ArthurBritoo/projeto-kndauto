@@ -39,7 +39,8 @@ def unique_path(directory: Path, base: str, ext: str) -> Path:
     return candidate
 
 
-def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out_dir: str | Path = 'downloads'):
+def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out_dir: str | Path = 'downloads',
+              force_reprocess: bool = False, force_redownload: bool = False, download_archive: str | None = None):
     """Run the split pipeline programmatically.
 
     This function performs the same steps as the CLI: download, split, convert, add texts and export files.
@@ -54,8 +55,12 @@ def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out
     import time
     print('1) Baixando vídeo...')
     t0 = time.monotonic()
-    # by default skip re-download if the id was already downloaded, and limit height for speed
-    src_path = download_youtube(url, raw_dir, skip_if_exists=True, max_height=720)
+    # choose whether to skip download based on force_redownload
+    skip_if_exists = not bool(force_redownload)
+    # default archive file under downloads/youtube/download_archive.txt unless provided
+    if download_archive is None:
+        download_archive = str(base_out / 'youtube' / 'download_archive.txt')
+    src_path = download_youtube(url, raw_dir, skip_if_exists=skip_if_exists, max_height=720, download_archive=download_archive)
     t1 = time.monotonic()
     print(f'Arquivo baixado em {src_path} (download time: {t1-t0:.1f}s)')
 
@@ -90,10 +95,24 @@ def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out
             v_t1 = time.monotonic()
 
             # add texts if present
-            # use title (if provided) or source stem to name output files
+            # use title (if provided) or source stem to name output files (deterministic name for caching)
             stem = safe_filename(title) if title else safe_filename(src_path.stem)
             final_base = f"{stem}_parte_{idx}"
-            final_name = unique_path(output_dir, final_base, '.mp4')
+            final_name = output_dir / f"{final_base}.mp4"
+
+            # If final exists and we are not forcing reprocess, skip processing this part
+            if final_name.exists() and not force_reprocess:
+                print(f'Parte {idx}: arquivo final já existe, pulando (use --force-reprocess para regenerar): {final_name}')
+                produced.append(final_name)
+                continue
+
+            # if forcing reprocess and file exists, remove it so we overwrite cleanly
+            if final_name.exists() and force_reprocess:
+                try:
+                    final_name.unlink()
+                except Exception:
+                    pass
+
             print('Adicionando textos (se houver)...')
             add_t0 = time.monotonic()
             # pass returned geometry so texts are placed close to the video rather than at canvas extremes
@@ -135,7 +154,11 @@ if __name__ == '__main__':
         parser.add_argument('--title', default='', help='Título a adicionar (opcional)')
         parser.add_argument('--subtitle', default='', help='Legenda a adicionar (opcional)')
         parser.add_argument('--out-dir', default='youtube_output', help='Pasta de saída')
+        parser.add_argument('--force-reprocess', action='store_true', help='Forçar reprocessamento das partes mesmo se existirem arquivos finais')
+        parser.add_argument('--force-redownload', action='store_true', help='Forçar re-download mesmo se o vídeo já foi baixado')
+        parser.add_argument('--download-archive', default=None, help='Arquivo de archive para yt-dlp (download-archive)')
         args = parser.parse_args()
-        run_split(args.url, parts=args.parts, title=args.title, subtitle=args.subtitle, out_dir=args.out_dir)
+        run_split(args.url, parts=args.parts, title=args.title, subtitle=args.subtitle, out_dir=args.out_dir,
+                  force_reprocess=args.force_reprocess, force_redownload=args.force_redownload, download_archive=args.download_archive)
 
     main()
