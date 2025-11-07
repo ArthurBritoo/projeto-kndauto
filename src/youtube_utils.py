@@ -17,6 +17,50 @@ from pathlib import Path
 from typing import Optional
 
 import yt_dlp
+import tempfile
+from http.cookiejar import CookieJar
+
+
+def _export_cookies_from_browser_to_file(browser: str, out_path: Path) -> Path:
+    """Try to extract cookies from the user's browser using browser_cookie3 and
+    write them in Netscape cookie file format to out_path. Returns out_path on success.
+    Raises RuntimeError on failure.
+    """
+    try:
+        import browser_cookie3
+    except Exception as e:
+        raise RuntimeError(f'browser_cookie3 not available: {e}')
+
+    # choose loader
+    try:
+        if browser and browser.lower() in ('chrome', 'edge', 'chromium'):
+            cj = browser_cookie3.chrome()
+        elif browser and browser.lower() in ('firefox', 'ff'):
+            cj = browser_cookie3.firefox()
+        else:
+            # generic loader attempts several browsers
+            cj = browser_cookie3.load()
+    except Exception as e:
+        raise RuntimeError(f'failed to load cookies from browser "{browser}": {e}')
+
+    # write Netscape format
+    try:
+        with open(out_path, 'w', encoding='utf-8') as fh:
+            fh.write('# Netscape HTTP Cookie File\n')
+            for c in cj:
+                # cookie attributes: domain, flag, path, secure, expires, name, value
+                domain = c.domain
+                flag = 'TRUE' if domain.startswith('.') else 'FALSE'
+                path_c = c.path
+                secure = 'TRUE' if getattr(c, 'secure', False) else 'FALSE'
+                expires = str(int(getattr(c, 'expires', 0) or 0))
+                name = c.name
+                value = c.value
+                fh.write('\t'.join([domain, flag, path_c, secure, expires, name, value]) + '\n')
+    except Exception as e:
+        raise RuntimeError(f'failed to write cookies file: {e}')
+
+    return out_path
 
 
 def download_youtube(url: str, out_dir: str | Path, skip_if_exists: bool = True, max_height: Optional[int] = None,
@@ -57,13 +101,24 @@ def download_youtube(url: str, out_dir: str | Path, skip_if_exists: bool = True,
             pass
         ydl_opts['download_archive'] = str(download_archive)
     # cookies handling: either a cookiefile path or extract from browser (chrome/firefox/edge)
-    if cookies:
-        # explicit cookie file (Netscape format)
-        ydl_opts['cookiefile'] = str(cookies)
-    if cookies_from_browser:
-        # ask yt-dlp to extract cookies from given browser
-        # key name mirrors the CLI option --cookies-from-browser
-        ydl_opts['cookiesfrombrowser'] = str(cookies_from_browser)
+    # If user asked for cookies-from-browser, try to extract cookies ourselves into a temp file
+    # and pass cookiefile to yt-dlp. This avoids some incompatibilities inside yt-dlp's
+    # internal cookies-from-browser handling.
+    if cookies_from_browser and not cookies:
+        try:
+            tf = Path(tempfile.mktemp(prefix='yt_cookies_', suffix='.txt'))
+            _export_cookies_from_browser_to_file(cookies_from_browser, tf)
+            cookies = str(tf)
+            # prefer cookiefile path
+            ydl_opts['cookiefile'] = cookies
+        except Exception as e:
+            # if extraction failed, fall back to letting yt-dlp try its own cookies-from-browser
+            print(f'youtube_utils: failed to extract cookies from browser: {e}; will fallback to yt-dlp internal extraction')
+            ydl_opts['cookiesfrombrowser'] = str(cookies_from_browser)
+    else:
+        if cookies:
+            # explicit cookie file (Netscape format)
+            ydl_opts['cookiefile'] = str(cookies)
 
     # Try to inspect info to get video id and expected filename without forcing a download
     with yt_dlp.YoutubeDL({'noplaylist': True, 'quiet': True}) as ydl:
