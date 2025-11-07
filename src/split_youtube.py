@@ -18,19 +18,41 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from youtube_utils import download_youtube, get_duration_seconds, split_durations
 from video_processing import extract_segment, convert_to_vertical, add_text
+import re
 
 
-def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out_dir: str | Path = 'youtube_output'):
+def safe_filename(s: str) -> str:
+    # remove unsafe chars, replace spaces with underscore
+    s = s.strip()
+    s = re.sub(r'[\\/:*?"<>|]', '', s)
+    s = re.sub(r'\s+', '_', s)
+    return s or 'video'
+
+
+def unique_path(directory: Path, base: str, ext: str) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    candidate = directory / f"{base}{ext}"
+    i = 1
+    while candidate.exists():
+        candidate = directory / f"{base}_{i}{ext}"
+        i += 1
+    return candidate
+
+
+def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out_dir: str | Path = 'downloads'):
     """Run the split pipeline programmatically.
 
     This function performs the same steps as the CLI: download, split, convert, add texts and export files.
     It is safe to call from other Python modules (e.g. FastAPI background task).
     """
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    base_out = Path(out_dir)
+    raw_dir = base_out / 'youtube' / 'raw_videos'
+    output_dir = base_out / 'youtube' / 'output_videos'
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     print('1) Baixando vídeo...')
-    src_path = download_youtube(url, out_dir)
+    src_path = download_youtube(url, raw_dir)
     print('Arquivo baixado em', src_path)
 
     print('2) Obtendo duração...')
@@ -61,7 +83,10 @@ def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out
             convert_to_vertical(segment_tmp, vertical)
 
             # add texts if present
-            final_name = out_dir / f'parte_{idx}.mp4'
+            # use title (if provided) or source stem to name output files
+            stem = safe_filename(title) if title else safe_filename(src_path.stem)
+            final_base = f"{stem}_parte_{idx}"
+            final_name = unique_path(output_dir, final_base, '.mp4')
             print('Adicionando textos (se houver)...')
             add_text(vertical, final_name, title=title if title else None, subtitle=subtitle if subtitle else None)
             produced.append(final_name)

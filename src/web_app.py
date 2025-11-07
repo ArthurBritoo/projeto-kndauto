@@ -14,6 +14,7 @@ Observações:
 
 import os
 import time
+from pathlib import Path
 from fastapi import FastAPI, Form, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -40,10 +41,12 @@ def index():
           <input type="text" name="url1" size="80" required><br><br>
           <label>URL do Tweet 2:</label><br>
           <input type="text" name="url2" size="80" required><br><br>
-          <label>Cookies (opcional, path para cookies.txt):</label><br>
-          <input type="text" name="cookies" size="80" placeholder="C:\\caminho\\cookies.txt"><br><br>
-          <input type="checkbox" name="force_reencode"> Forçar re-encode (slower, mais compatível)<br><br>
-          <button type="submit">Gerar vídeo combinado</button>
+            <label>Cookies (opcional, path para cookies.txt):</label><br>
+            <input type="text" name="cookies" size="80" placeholder="C:\\caminho\\cookies.txt"><br><br>
+            <label>Título do vídeo final (opcional):</label><br>
+            <input type="text" name="title" size="80" placeholder="Ex: Meu merge"><br><br>
+            <input type="checkbox" name="force_reencode"> Forçar re-encode (slower, mais compatível)<br><br>
+            <button type="submit">Gerar vídeo combinado</button>
         </form>
 
         <hr>
@@ -66,49 +69,70 @@ def index():
 
 
 @app.post('/merge')
-def merge(url1: str = Form(...), url2: str = Form(...), cookies: str = Form(None), force_reencode: str = Form(None)):
+def merge(url1: str = Form(...), url2: str = Form(...), cookies: str = Form(None), title: str = Form(''), force_reencode: str = Form(None)):
     """Endpoint simples que executa o pipeline e redireciona para o arquivo final na pasta downloads."""
     # Importar localmente para evitar circular imports quando a app é importada
     from run_pipeline import run_pipeline
-
-    timestamp = int(time.time())
-    output_name = f'output_{timestamp}.mp4'
-    output_path = os.path.join('downloads', output_name)
-
     # converter checkbox para boolean
     force = bool(force_reencode)
 
     try:
-        run_pipeline(url1, url2, out_dir='downloads', output=output_path, cookies=cookies or None, force_reencode=force)
+        # run_pipeline will place outputs under downloads/twitter/output_videos and return the chosen output path
+        out_path = run_pipeline(url1, url2, out_dir='downloads', output=None, title=title or '', cookies=cookies or None, force_reencode=force)
     except Exception as e:
         # Retornar uma página de erro simples
         return HTMLResponse(f'<h3>Erro durante o processamento:</h3><pre>{e}</pre>', status_code=500)
 
-    # Redirecionar para o arquivo estático gerado
-    return RedirectResponse(url=f'/downloads/{output_name}', status_code=303)
+    # Redirecionar para o arquivo estático gerado (relativo à pasta downloads)
+    rel = os.path.relpath(out_path, start=os.path.abspath('downloads'))
+    return RedirectResponse(url=f'/downloads/{rel}', status_code=303)
 
 
 @app.post('/split_youtube')
 def split_youtube(background_tasks: BackgroundTasks, url: str = Form(...), parts: int = Form(...), title: str = Form(''), subtitle: str = Form('')):
-  """Endpoint que dispara o processo de dividir/convertir YouTube em background.
+    """Endpoint que dispara o processo de dividir/convertir YouTube em background.
 
-  Retorna imediatamente um status e escreve resultados em `youtube_output`.
-  """
-  from split_youtube import run_split
+    Retorna imediatamente um status e escreve resultados em `downloads/youtube/output_videos`.
+    """
 
-  out_dir = 'youtube_output'
+    # import run_split robustly: try relative, absolute, then load by path as fallback
+    def _get_run_split():
+        try:
+            # when module is imported as package (e.g. src.web_app)
+            from .split_youtube import run_split
+            return run_split
+        except Exception:
+            try:
+                # when running as script or different import layout
+                from src.split_youtube import run_split
+                return run_split
+            except Exception:
+                # fallback: load the file directly by path
+                import importlib.util
+                mod_path = Path(__file__).parent / 'split_youtube.py'
+                spec = importlib.util.spec_from_file_location('split_youtube', str(mod_path))
+                mod = importlib.util.module_from_spec(spec)
+                # ensure the src folder is on sys.path so local imports inside the module work
+                import sys
+                src_dir = str(Path(__file__).parent)
+                if src_dir not in sys.path:
+                    sys.path.insert(0, src_dir)
+                spec.loader.exec_module(mod)
+                return getattr(mod, 'run_split')
 
-  def job():
-    try:
-      run_split(url, parts=int(parts), title=title or '', subtitle=subtitle or '', out_dir=out_dir)
-    except Exception as e:
-      # escrevemos um arquivo de erro simples para diagnóstico
-      Path(out_dir).mkdir(parents=True, exist_ok=True)
-      with open(Path(out_dir) / 'error.txt', 'w', encoding='utf-8') as f:
-        f.write(str(e))
+    run_split = _get_run_split()
+    out_dir = 'downloads'
 
-  background_tasks.add_task(job)
-  return {'status': 'started', 'out_dir': out_dir}
+    def job():
+        try:
+            run_split(url, parts=int(parts), title=title or '', subtitle=subtitle or '', out_dir=out_dir)
+        except Exception as e:
+            Path(out_dir).mkdir(parents=True, exist_ok=True)
+            with open(Path(out_dir) / 'error.txt', 'w', encoding='utf-8') as f:
+                f.write(str(e))
+
+    background_tasks.add_task(job)
+    return {'status': 'started', 'out_dir': out_dir}
 
 
 @app.get('/health')

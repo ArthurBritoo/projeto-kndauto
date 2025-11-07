@@ -16,12 +16,31 @@ Opções: --cookies, --force-reencode
 import os
 import sys
 import argparse
+import time
 
 def _ensure_out_dir(path: str):
     os.makedirs(path, exist_ok=True)
 
 
-def run_pipeline(url1: str, url2: str, out_dir: str, output: str, cookies: str = None, force_reencode: bool = False):
+def safe_filename(s: str) -> str:
+    import re
+    s = (s or '').strip()
+    s = re.sub(r'[\\/:*?"<>|]', '', s)
+    s = re.sub(r'\s+', '_', s)
+    return s or 'video'
+
+
+def unique_path(directory: str, base: str, ext: str) -> str:
+    os.makedirs(directory, exist_ok=True)
+    candidate = os.path.join(directory, f"{base}{ext}")
+    i = 1
+    while os.path.exists(candidate):
+        candidate = os.path.join(directory, f"{base}_{i}{ext}")
+        i += 1
+    return candidate
+
+
+def run_pipeline(url1: str, url2: str, out_dir: str, output: str = None, title: str = '', cookies: str = None, force_reencode: bool = False):
     # importar dinamicamente os módulos do diretório src (quando executado como python src/run_pipeline.py)
     try:
         import validate_environment as validator
@@ -36,10 +55,15 @@ def run_pipeline(url1: str, url2: str, out_dir: str, output: str, cookies: str =
     if not ok:
         raise RuntimeError('Validação falhou: verifique URLs e ferramentas (yt-dlp, ffmpeg)')
 
-    _ensure_out_dir(out_dir)
+    # Prepare structured directories: downloads/twitter/raw_videos and downloads/twitter/output_videos
+    base_out = os.path.abspath(out_dir)
+    raw_dir = os.path.join(base_out, 'twitter', 'raw_videos')
+    output_dir = os.path.join(base_out, 'twitter', 'output_videos')
+    _ensure_out_dir(raw_dir)
+    _ensure_out_dir(output_dir)
 
     print('2) Baixando vídeos com yt-dlp...')
-    p1, p2 = downloader.download_two_videos(url1, url2, out_dir=out_dir, cookies_file=cookies)
+    p1, p2 = downloader.download_two_videos(url1, url2, out_dir=raw_dir, cookies_file=cookies)
     print(' - baixado:', p1)
     print(' - baixado:', p2)
 
@@ -53,7 +77,12 @@ def run_pipeline(url1: str, url2: str, out_dir: str, output: str, cookies: str =
         print('Forçando re-encode por opção do usuário')
 
     print('4) Concatenando...')
-    out_path = os.path.abspath(output)
+    # Decide output filename: if title provided, use it; else use timestamp
+    if not output:
+        stem = safe_filename(title) if title else f'output_{int(time.time())}'
+        out_path = unique_path(output_dir, stem, '.mp4')
+    else:
+        out_path = os.path.abspath(output)
     concater.concat_videos([p1, p2], out_path, force_reencode=force_reencode)
 
     print('\nPipeline concluído. Arquivo final em:', out_path)
