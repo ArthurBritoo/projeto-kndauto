@@ -83,9 +83,20 @@ def merge(url1: str = Form(...), url2: str = Form(...), cookies: str = Form(None
         # Retornar uma página de erro simples
         return HTMLResponse(f'<h3>Erro durante o processamento:</h3><pre>{e}</pre>', status_code=500)
 
-    # Redirecionar para o arquivo estático gerado (relativo à pasta downloads)
+    # Render a small result page with download link and a button to process another
     rel = os.path.relpath(out_path, start=os.path.abspath('downloads'))
-    return RedirectResponse(url=f'/downloads/{rel}', status_code=303)
+    download_url = f'/downloads/{rel}'
+    html = f"""
+    <html>
+      <head><title>Processamento concluído</title></head>
+      <body>
+        <h3>Processamento concluído</h3>
+        <p>Arquivo gerado: <a href="{download_url}">{os.path.basename(out_path)}</a></p>
+        <p><a href="/">&larr; Processar outro</a></p>
+      </body>
+    </html>
+    """
+    return HTMLResponse(content=html)
 
 
 @app.post('/split_youtube')
@@ -132,7 +143,18 @@ def split_youtube(background_tasks: BackgroundTasks, url: str = Form(...), parts
                 f.write(str(e))
 
     background_tasks.add_task(job)
-    return {'status': 'started', 'out_dir': out_dir}
+    # Return a small HTML page informing the job started and provide a button to process another
+    html = f"""
+    <html>
+      <head><title>Processamento em segundo plano</title></head>
+      <body>
+        <h3>Processamento iniciado</h3>
+        <p>As partes serão escritas em: <code>{out_dir}/youtube/output_videos</code></p>
+        <p><a href="/">&larr; Processar outro</a></p>
+      </body>
+    </html>
+    """
+    return HTMLResponse(content=html)
 
 
 @app.get('/health')

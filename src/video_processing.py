@@ -87,9 +87,10 @@ def add_text(input_path: Path, out_path: Path, title: Optional[str] = None, subt
     if video_geom:
         scaled_w, scaled_h, overlay_x, overlay_y = video_geom
         # font sizes relative to the video's visible height
-        title_fs = max(12, int(scaled_h * 0.06))
-        subtitle_fs = max(10, int(scaled_h * 0.045))
-        margin = max(6, int(scaled_h * 0.02))
+        # increased defaults so title and subtitle are more visible on social previews
+        title_fs = max(22, int(scaled_h * 0.09))
+        subtitle_fs = max(18, int(scaled_h * 0.06))
+        margin = max(10, int(scaled_h * 0.03))
 
         if title:
             # try to place title right above the video; if there's not enough space, place it inside the top of the video
@@ -114,11 +115,11 @@ def add_text(input_path: Path, out_path: Path, title: Optional[str] = None, subt
         # and subtitle um pouco acima da borda inferior, usando tamanhos relativas à altura (responsivo)
         if title:
             filters.append(
-                f"drawtext=font='{title_font}':text='{escape_text(title)}':fontcolor=yellow:fontsize=trunc(h*0.06):x=(w-text_w)/2:y=h*0.06:box=1:boxcolor=black@0.4:boxborderw=10"
+                f"drawtext=font='{title_font}':text='{escape_text(title)}':fontcolor=yellow:fontsize=trunc(h*0.09):x=(w-text_w)/2:y=h*0.08:box=1:boxcolor=black@0.4:boxborderw=10"
             )
         if subtitle:
             filters.append(
-                f"drawtext=font='{subtitle_font}':text='{escape_text(subtitle)}':fontcolor=white:fontsize=trunc(h*0.045):x=(w-text_w)/2:y=h-text_h-h*0.06:box=1:boxcolor=black@0.4:boxborderw=8"
+                f"drawtext=font='{subtitle_font}':text='{escape_text(subtitle)}':fontcolor=white:fontsize=trunc(h*0.06):x=(w-text_w)/2:y=h-text_h-h*0.06:box=1:boxcolor=black@0.4:boxborderw=8"
             )
     if not filters:
         # nothing to do, copy
