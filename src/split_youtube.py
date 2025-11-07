@@ -80,7 +80,8 @@ def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out
             # convert to vertical 9:16
             vertical = tmpdir / f'vertical_{idx}.mp4'
             print('Convertendo para 9:16...')
-            convert_to_vertical(segment_tmp, vertical)
+            # convert_to_vertical now returns geometry (scaled_w, scaled_h, overlay_x, overlay_y)
+            video_geom = convert_to_vertical(segment_tmp, vertical)
 
             # add texts if present
             # use title (if provided) or source stem to name output files
@@ -88,7 +89,9 @@ def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out
             final_base = f"{stem}_parte_{idx}"
             final_name = unique_path(output_dir, final_base, '.mp4')
             print('Adicionando textos (se houver)...')
-            add_text(vertical, final_name, title=title if title else None, subtitle=subtitle if subtitle else None)
+            # pass returned geometry so texts are placed close to the video rather than at canvas extremes
+            add_text(vertical, final_name, title=title if title else None, subtitle=subtitle if subtitle else None,
+                     video_geom=video_geom, target_w=1080, target_h=1920)
             produced.append(final_name)
 
         print('Arquivos gerados:')
