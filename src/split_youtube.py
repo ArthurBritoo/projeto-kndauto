@@ -10,6 +10,11 @@ import argparse
 from pathlib import Path
 import shutil
 import tempfile
+import sys
+
+# Ensure the module's directory is on sys.path so local imports (youtube_utils, video_processing)
+# resolve whether the module is imported as a script, as a package, or loaded by spec.
+sys.path.insert(0, str(Path(__file__).parent))
 
 from youtube_utils import download_youtube, get_duration_seconds, split_durations
 from video_processing import extract_segment, convert_to_vertical, add_text
