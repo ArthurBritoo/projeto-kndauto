@@ -26,6 +26,16 @@ import threading
 import time
 import webbrowser
 import socket
+import logging
+
+# Configure simple file logging so the launcher writes diagnostics when run as an exe
+log_path = os.path.join(os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(__file__), 'launcher.log')
+logger = logging.getLogger('launcher')
+if not logger.handlers:
+    logger.setLevel(logging.INFO)
+    fh = logging.FileHandler(log_path, encoding='utf-8')
+    fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
+    logger.addHandler(fh)
 
 
 def ensure_ffmpeg_in_path():
@@ -35,6 +45,9 @@ def ensure_ffmpeg_in_path():
     ff_bin = os.path.join(base_path, 'ffmpeg', 'bin')
     if os.path.isdir(ff_bin):
         os.environ['PATH'] = ff_bin + os.pathsep + os.environ.get('PATH', '')
+        logger.info('ffmpeg bin found and added to PATH: %s', ff_bin)
+    else:
+        logger.info('ffmpeg bin not found at: %s', ff_bin)
 
 
 def run_server():
@@ -42,7 +55,11 @@ def run_server():
     import uvicorn
     from web_app import app
     # uvicorn.run bloqueia; rodamos em uma thread separada
-    uvicorn.run(app, host='127.0.0.1', port=8000)
+    logger.info('Starting uvicorn server...')
+    try:
+        uvicorn.run(app, host='127.0.0.1', port=8000)
+    except Exception as e:
+        logger.exception('uvicorn.run failed: %s', e)
 
 
 def wait_for_port(host='127.0.0.1', port=8000, timeout=30.0):
@@ -58,7 +75,7 @@ def wait_for_port(host='127.0.0.1', port=8000, timeout=30.0):
 
 def main():
     ensure_ffmpeg_in_path()
-
+    logger.info('Launcher started')
     t = threading.Thread(target=run_server, daemon=True)
     t.start()
 
@@ -67,10 +84,13 @@ def main():
     if ready:
         try:
             webbrowser.open(url)
+            logger.info('Browser opened: %s', url)
         except Exception:
-            print(f'Abra no navegador manualmente: {url}')
+            logger.exception('Failed to open browser; tell user to open manually: %s', url)
     else:
-        print('Servidor não ficou pronto no tempo esperado. Verifique logs.')
+        logger.error('Servidor não ficou pronto no tempo esperado.')
+
+    logger.info('Entering main loop; server thread alive=%s', t.is_alive())
 
     # Manter o processo principal vivo enquanto a thread do servidor roda
     try:
