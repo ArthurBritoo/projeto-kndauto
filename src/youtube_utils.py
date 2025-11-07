@@ -19,19 +19,53 @@ from typing import Optional
 import yt_dlp
 
 
-def download_youtube(url: str, out_dir: str | Path) -> Path:
+def download_youtube(url: str, out_dir: str | Path, skip_if_exists: bool = True, max_height: Optional[int] = None) -> Path:
     """Download best video+audio merged format via yt-dlp.
+
+    If skip_if_exists is True the function will attempt to detect an existing
+    downloaded file for the video id and return it without re-downloading.
+
+    max_height: if provided (e.g. 720) will restrict the downloaded video
+    resolution to at most that height to speed up downloads and reduce size.
 
     Returns path to downloaded file.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # choose format string, optionally limit height
+    if max_height:
+        fmt = f"best[height<={max_height}]+bestaudio/best[height<={max_height}]"
+    else:
+        fmt = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best'
+
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
+        'format': fmt,
         'outtmpl': str(out_dir / '%(id)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'noplaylist': True,
+        # do not overwrite by default; we'll control via skip_if_exists
+        'nooverwrites': False,
     }
+
+    # Try to inspect info to get video id and expected filename without forcing a download
+    with yt_dlp.YoutubeDL({'noplaylist': True, 'quiet': True}) as ydl:
+        try:
+            info = ydl.extract_info(url, download=False)
+        except Exception:
+            info = None
+
+    if info and skip_if_exists:
+        vid = info.get('id')
+        # check common extensions (.mp4, .mkv, .webm, original ext)
+        candidates = [out_dir / f"{vid}.mp4", out_dir / f"{vid}.mkv", out_dir / f"{vid}.webm", out_dir / f"{vid}.{info.get('ext', 'mp4')}" ]
+        for c in candidates:
+            if c.exists():
+                print('download_youtube: arquivo já existe, pulando download ->', c)
+                return c
+
+    # perform download
+    ydl_opts['nooverwrites'] = True if skip_if_exists else False
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = ydl.prepare_filename(info)

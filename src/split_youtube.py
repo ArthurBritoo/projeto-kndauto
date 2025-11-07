@@ -51,9 +51,13 @@ def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out
     raw_dir.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    import time
     print('1) Baixando vídeo...')
-    src_path = download_youtube(url, raw_dir)
-    print('Arquivo baixado em', src_path)
+    t0 = time.monotonic()
+    # by default skip re-download if the id was already downloaded, and limit height for speed
+    src_path = download_youtube(url, raw_dir, skip_if_exists=True, max_height=720)
+    t1 = time.monotonic()
+    print(f'Arquivo baixado em {src_path} (download time: {t1-t0:.1f}s)')
 
     print('2) Obtendo duração...')
     total = get_duration_seconds(src_path)
@@ -69,6 +73,7 @@ def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out
         for idx, (start, duration) in enumerate(ranges, start=1):
             segment_tmp = tmpdir / f'segment_{idx}.mp4'
             print(f'Extraindo parte {idx}: start={start} duration={duration}')
+            seg_t0 = time.monotonic()
             # Try to extract with copy first; if it fails re-encode the segment
             try:
                 extract_segment(src_path, start, duration, segment_tmp)
@@ -76,12 +81,13 @@ def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out
                 print('extract_segment falhou, tentando re-encode para segment_tmp:', e)
                 # re-encode fallback
                 extract_segment_reencode(src_path, start, duration, segment_tmp)
-
             # convert to vertical 9:16
             vertical = tmpdir / f'vertical_{idx}.mp4'
             print('Convertendo para 9:16...')
             # convert_to_vertical now returns geometry (scaled_w, scaled_h, overlay_x, overlay_y)
+            v_t0 = time.monotonic()
             video_geom = convert_to_vertical(segment_tmp, vertical)
+            v_t1 = time.monotonic()
 
             # add texts if present
             # use title (if provided) or source stem to name output files
@@ -89,9 +95,14 @@ def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out
             final_base = f"{stem}_parte_{idx}"
             final_name = unique_path(output_dir, final_base, '.mp4')
             print('Adicionando textos (se houver)...')
+            add_t0 = time.monotonic()
             # pass returned geometry so texts are placed close to the video rather than at canvas extremes
             add_text(vertical, final_name, title=title if title else None, subtitle=subtitle if subtitle else None,
                      video_geom=video_geom, target_w=1080, target_h=1920)
+            add_t1 = time.monotonic()
+
+            seg_t1 = time.monotonic()
+            print(f'Parte {idx} tempos: extract={(seg_t1-seg_t0):.1f}s, convert={(v_t1-v_t0):.1f}s, add_text={(add_t1-add_t0):.1f}s')
             produced.append(final_name)
 
         print('Arquivos gerados:')
