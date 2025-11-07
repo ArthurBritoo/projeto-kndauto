@@ -57,14 +57,16 @@ def add_text(input_path: Path, out_path: Path, title: Optional[str] = None, subt
     Requires ffmpeg built with libfreetype (most official builds include it).
     """
     filters = []
-    # drawtext expressions: center horizontally, place title near top, subtitle near bottom
+    # drawtext expressions: center horizontally, place title a pouco abaixo do topo do vídeo
+    # and subtitle um pouco acima da borda inferior, usando tamanhos relativos à altura (responsivo)
+    # fontsize uses an expression based on video height: trunc(h*0.06) para título e trunc(h*0.045) para legenda
     if title:
         filters.append(
-            f"drawtext=font='{title_font}':text='{escape_text(title)}':fontcolor=yellow:fontsize=64:x=(w-text_w)/2:y=40:box=1:boxcolor=black@0.4:boxborderw=10"
+            f"drawtext=font='{title_font}':text='{escape_text(title)}':fontcolor=yellow:fontsize=trunc(h*0.06):x=(w-text_w)/2:y=h*0.06:box=1:boxcolor=black@0.4:boxborderw=10"
         )
     if subtitle:
         filters.append(
-            f"drawtext=font='{subtitle_font}':text='{escape_text(subtitle)}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=h-text_h-40:box=1:boxcolor=black@0.4:boxborderw=8"
+            f"drawtext=font='{subtitle_font}':text='{escape_text(subtitle)}':fontcolor=white:fontsize=trunc(h*0.045):x=(w-text_w)/2:y=h-text_h-h*0.06:box=1:boxcolor=black@0.4:boxborderw=8"
         )
     if not filters:
         # nothing to do, copy
