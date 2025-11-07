@@ -15,27 +15,24 @@ from youtube_utils import download_youtube, get_duration_seconds, split_duration
 from video_processing import extract_segment, convert_to_vertical, add_text
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Baixa um vídeo do YouTube e divide em partes verticais 9:16')
-    parser.add_argument('--url', required=True, help='Link do vídeo do YouTube')
-    parser.add_argument('--parts', type=int, default=3, help='Número de partes para dividir (>=1)')
-    parser.add_argument('--title', default='', help='Título a adicionar (opcional)')
-    parser.add_argument('--subtitle', default='', help='Legenda a adicionar (opcional)')
-    parser.add_argument('--out-dir', default='youtube_output', help='Pasta de saída')
-    args = parser.parse_args()
+def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out_dir: str | Path = 'youtube_output'):
+    """Run the split pipeline programmatically.
 
-    out_dir = Path(args.out_dir)
+    This function performs the same steps as the CLI: download, split, convert, add texts and export files.
+    It is safe to call from other Python modules (e.g. FastAPI background task).
+    """
+    out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print('1) Baixando vídeo...')
-    src_path = download_youtube(args.url, out_dir)
+    src_path = download_youtube(url, out_dir)
     print('Arquivo baixado em', src_path)
 
     print('2) Obtendo duração...')
     total = get_duration_seconds(src_path)
     print(f'Duração total: {total:.2f} s')
 
-    ranges = split_durations(total, args.parts)
+    ranges = split_durations(total, parts)
 
     tmpdir = Path(tempfile.mkdtemp(prefix='split_youtube_'))
     print('Usando pasta temporária', tmpdir)
@@ -61,7 +58,7 @@ def main():
             # add texts if present
             final_name = out_dir / f'parte_{idx}.mp4'
             print('Adicionando textos (se houver)...')
-            add_text(vertical, final_name, title=args.title if args.title else None, subtitle=args.subtitle if args.subtitle else None)
+            add_text(vertical, final_name, title=title if title else None, subtitle=subtitle if subtitle else None)
             produced.append(final_name)
 
         print('Arquivos gerados:')
@@ -87,4 +84,14 @@ def extract_segment_reencode(input_path, start, duration, out_path):
 
 
 if __name__ == '__main__':
+    def main():
+        parser = argparse.ArgumentParser(description='Baixa um vídeo do YouTube e divide em partes verticais 9:16')
+        parser.add_argument('--url', required=True, help='Link do vídeo do YouTube')
+        parser.add_argument('--parts', type=int, default=3, help='Número de partes para dividir (>=1)')
+        parser.add_argument('--title', default='', help='Título a adicionar (opcional)')
+        parser.add_argument('--subtitle', default='', help='Legenda a adicionar (opcional)')
+        parser.add_argument('--out-dir', default='youtube_output', help='Pasta de saída')
+        args = parser.parse_args()
+        run_split(args.url, parts=args.parts, title=args.title, subtitle=args.subtitle, out_dir=args.out_dir)
+
     main()
