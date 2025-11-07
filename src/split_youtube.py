@@ -40,7 +40,8 @@ def unique_path(directory: Path, base: str, ext: str) -> Path:
 
 
 def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out_dir: str | Path = 'downloads',
-              force_reprocess: bool = False, force_redownload: bool = False, download_archive: str | None = None):
+              force_reprocess: bool = False, force_redownload: bool = False, download_archive: str | None = None,
+              cookies: str | None = None, cookies_from_browser: str | None = None):
     """Run the split pipeline programmatically.
 
     This function performs the same steps as the CLI: download, split, convert, add texts and export files.
@@ -60,7 +61,8 @@ def run_split(url: str, parts: int = 3, title: str = '', subtitle: str = '', out
     # default archive file under downloads/youtube/download_archive.txt unless provided
     if download_archive is None:
         download_archive = str(base_out / 'youtube' / 'download_archive.txt')
-    src_path = download_youtube(url, raw_dir, skip_if_exists=skip_if_exists, max_height=720, download_archive=download_archive)
+    src_path = download_youtube(url, raw_dir, skip_if_exists=skip_if_exists, max_height=720,
+                              download_archive=download_archive, cookies=cookies, cookies_from_browser=cookies_from_browser)
     t1 = time.monotonic()
     print(f'Arquivo baixado em {src_path} (download time: {t1-t0:.1f}s)')
 
@@ -149,7 +151,7 @@ def extract_segment_reencode(input_path, start, duration, out_path):
 if __name__ == '__main__':
     def main():
         parser = argparse.ArgumentParser(description='Baixa um vídeo do YouTube e divide em partes verticais 9:16')
-        parser.add_argument('--url', required=True, help='Link do vídeo do YouTube')
+        parser.add_argument('--url', required=True, nargs='+', help='One or more YouTube links to process')
         parser.add_argument('--parts', type=int, default=3, help='Número de partes para dividir (>=1)')
         parser.add_argument('--title', default='', help='Título a adicionar (opcional)')
         parser.add_argument('--subtitle', default='', help='Legenda a adicionar (opcional)')
@@ -157,8 +159,13 @@ if __name__ == '__main__':
         parser.add_argument('--force-reprocess', action='store_true', help='Forçar reprocessamento das partes mesmo se existirem arquivos finais')
         parser.add_argument('--force-redownload', action='store_true', help='Forçar re-download mesmo se o vídeo já foi baixado')
         parser.add_argument('--download-archive', default=None, help='Arquivo de archive para yt-dlp (download-archive)')
+        parser.add_argument('--cookies', default=None, help='Caminho para cookies.txt (Netscape)')
+        parser.add_argument('--cookies-from-browser', default=None, help='Extrair cookies do navegador (e.g. chrome, firefox)')
         args = parser.parse_args()
-        run_split(args.url, parts=args.parts, title=args.title, subtitle=args.subtitle, out_dir=args.out_dir,
-                  force_reprocess=args.force_reprocess, force_redownload=args.force_redownload, download_archive=args.download_archive)
+        for u in args.url:
+            print('\n==== Processando URL:', u)
+            run_split(u, parts=args.parts, title=args.title, subtitle=args.subtitle, out_dir=args.out_dir,
+                      force_reprocess=args.force_reprocess, force_redownload=args.force_redownload,
+                      download_archive=args.download_archive, cookies=args.cookies, cookies_from_browser=args.cookies_from_browser)
 
     main()

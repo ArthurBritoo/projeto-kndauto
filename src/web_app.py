@@ -60,6 +60,10 @@ def index():
           <input type="text" name="title" size="80" placeholder="Ex: Meu vídeo"><br><br>
           <label>Legenda (branca, opcional):</label><br>
           <input type="text" name="subtitle" size="80" placeholder="Ex: @meu_usuario"><br><br>
+            <label>Cookies (opcional, path para cookies.txt):</label><br>
+            <input type="text" name="cookies" size="80" placeholder="C:\\caminho\\cookies.txt"><br><br>
+            <label>Cookies from browser (opcional, ex: chrome, firefox):</label><br>
+            <input type="text" name="cookies_from_browser" size="40" placeholder="chrome"><br><br>
           <button type="submit">Gerar partes 9:16</button>
         </form>
       </body>
@@ -100,7 +104,8 @@ def merge(url1: str = Form(...), url2: str = Form(...), cookies: str = Form(None
 
 
 @app.post('/split_youtube')
-def split_youtube(background_tasks: BackgroundTasks, url: str = Form(...), parts: int = Form(...), title: str = Form(''), subtitle: str = Form('')):
+def split_youtube(background_tasks: BackgroundTasks, url: str = Form(...), parts: int = Form(...), title: str = Form(''), subtitle: str = Form(''),
+                  cookies: str = Form(None), cookies_from_browser: str = Form(None)):
     """Endpoint que dispara o processo de dividir/convertir YouTube em background.
 
     Retorna imediatamente um status e escreve resultados em `downloads/youtube/output_videos`.
@@ -136,7 +141,8 @@ def split_youtube(background_tasks: BackgroundTasks, url: str = Form(...), parts
 
     def job():
         try:
-            run_split(url, parts=int(parts), title=title or '', subtitle=subtitle or '', out_dir=out_dir)
+            run_split(url, parts=int(parts), title=title or '', subtitle=subtitle or '', out_dir=out_dir,
+                      cookies=cookies or None, cookies_from_browser=cookies_from_browser or None)
         except Exception as e:
             Path(out_dir).mkdir(parents=True, exist_ok=True)
             with open(Path(out_dir) / 'error.txt', 'w', encoding='utf-8') as f:

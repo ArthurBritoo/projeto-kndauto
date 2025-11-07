@@ -20,7 +20,8 @@ import yt_dlp
 
 
 def download_youtube(url: str, out_dir: str | Path, skip_if_exists: bool = True, max_height: Optional[int] = None,
-                     download_archive: Optional[str] = None) -> Path:
+                     download_archive: Optional[str] = None, cookies: Optional[str] = None,
+                     cookies_from_browser: Optional[str] = None) -> Path:
     """Download best video+audio merged format via yt-dlp.
 
     If skip_if_exists is True the function will attempt to detect an existing
@@ -55,6 +56,14 @@ def download_youtube(url: str, out_dir: str | Path, skip_if_exists: bool = True,
         except Exception:
             pass
         ydl_opts['download_archive'] = str(download_archive)
+    # cookies handling: either a cookiefile path or extract from browser (chrome/firefox/edge)
+    if cookies:
+        # explicit cookie file (Netscape format)
+        ydl_opts['cookiefile'] = str(cookies)
+    if cookies_from_browser:
+        # ask yt-dlp to extract cookies from given browser
+        # key name mirrors the CLI option --cookies-from-browser
+        ydl_opts['cookiesfrombrowser'] = str(cookies_from_browser)
 
     # Try to inspect info to get video id and expected filename without forcing a download
     with yt_dlp.YoutubeDL({'noplaylist': True, 'quiet': True}) as ydl:
