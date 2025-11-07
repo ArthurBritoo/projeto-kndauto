@@ -81,18 +81,45 @@ def download_youtube(url: str, out_dir: str | Path, skip_if_exists: bool = True,
                 print('download_youtube: arquivo já existe, pulando download ->', c)
                 return c
 
-    # perform download
+    # perform download using the Python API; if it fails (often due to cookies-from-browser
+    # extraction issues) fallback to calling the yt-dlp CLI which sometimes behaves more
+    # robustly in environments where the API extraction raises internal errors.
     ydl_opts['nooverwrites'] = True if skip_if_exists else False
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
-        # yt-dlp may produce merged file with .mp4 extension
-        if not Path(filename).exists():
-            # try mp4
-            base = Path(filename).with_suffix('.mp4')
-            if base.exists():
-                filename = str(base)
-    return Path(filename)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            # yt-dlp may produce merged file with .mp4 extension
+            if not Path(filename).exists():
+                # try mp4
+                base = Path(filename).with_suffix('.mp4')
+                if base.exists():
+                    filename = str(base)
+        return Path(filename)
+    except Exception as e:
+        # Fallback: call yt-dlp CLI with similar options
+        print('youtube_utils: Python API download failed, falling back to yt-dlp CLI:', e)
+        cli_cmd = ['yt-dlp', '--no-playlist', '-f', fmt, '-o', str(out_dir / '%(id)s.%(ext)s'), '--merge-output-format', 'mp4']
+        if download_archive:
+            cli_cmd += ['--download-archive', str(download_archive)]
+        if skip_if_exists:
+            cli_cmd += ['--no-overwrites']
+        if cookies:
+            cli_cmd += ['--cookies', str(cookies)]
+        if cookies_from_browser:
+            cli_cmd += ['--cookies-from-browser', str(cookies_from_browser)]
+        # run CLI and capture output
+        import subprocess
+        proc = subprocess.run(cli_cmd + [url], capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(f"yt-dlp CLI failed:\nSTDOUT:{proc.stdout}\nSTDERR:{proc.stderr}")
+
+        # pick the newest file in out_dir as the downloaded file (best-effort)
+        candidates = list(out_dir.glob('*'))
+        if not candidates:
+            raise RuntimeError('yt-dlp CLI reported success but no file found in out_dir')
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return candidates[0]
 
 
 def get_duration_seconds(filepath: str | Path) -> float:
